@@ -8,6 +8,9 @@ import (
 	"os"
 
 	aai "github.com/AssemblyAI/assemblyai-go-sdk"
+	"github.com/clerk/clerk-sdk-go/v2"
+	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
+	"github.com/clerk/clerk-sdk-go/v2/user"
 	"github.com/joho/godotenv"
 )
 
@@ -28,6 +31,32 @@ func logMessage(messageType, message string) {
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
+	claims, ok := clerk.SessionClaimsFromContext(r.Context())
+
+	if !ok {
+		logMessage(Error, "No session claims found")
+		logMessage(Info, fmt.Sprintf("headers: %v", r.Header))
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"access": "unauthorized"}`))
+		return
+	}
+
+	usr, err := user.Get(r.Context(), claims.Subject)
+	if err != nil {
+		logMessage(Error, fmt.Sprintf("Error getting user: %v", err))
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"access": "internal server error"}`))
+		return
+		// handle the error
+	}
+	logMessage(Info, fmt.Sprintf("User: %s", usr.ID))
+
+	if usr.Banned {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"access": "forbidden"}`))
+		return
+	}
+
 	logMessage(Info, "Received request")
 
 	// Retrieve file from form data
@@ -112,9 +141,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	clerkApiKey := os.Getenv("CLERK_API_KEY")
+	if clerkApiKey == "" {
+		logMessage(Error, "CLERK_API_KEY not set in .env file")
+		os.Exit(1)
+	}
+
+	clerk.SetKey(clerkApiKey)
+
 	// Start the server
 	mux := http.NewServeMux()
-	mux.Handle("POST /upload", http.HandlerFunc(uploadHandler))
+	protectedHandler := http.HandlerFunc(uploadHandler)
+	mux.Handle(
+		"POST /transcribe",
+		clerkhttp.WithHeaderAuthorization()(protectedHandler),
+	)
 
 	logMessage(Info, "Starting server on :8080")
 	http.ListenAndServe("0.0.0.0:8080", mux)
