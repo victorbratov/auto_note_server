@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/AssemblyAI/assemblyai-go-sdk"
 	aai "github.com/AssemblyAI/assemblyai-go-sdk"
 	"github.com/clerk/clerk-sdk-go/v2"
 	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
@@ -195,7 +196,10 @@ func handleSummaryRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func sendToAssemblyAI(fileName string) (*aai.Transcript, error) {
-	client := aai.NewClient(assemblyApiKey)
+	client := assemblyai.NewClientWithOptions(
+		aai.WithAPIKey(assemblyApiKey),
+		aai.WithBaseURL("https://api.eu.assemblyai.com"),
+	)
 	ctx := context.Background()
 
 	// Open the file
@@ -208,8 +212,9 @@ func sendToAssemblyAI(fileName string) (*aai.Transcript, error) {
 
 	// transcript parameters
 	params := &aai.TranscriptOptionalParams{
-		Punctuate:  aai.Bool(true),
-		FormatText: aai.Bool(true),
+		SpeechModel: "best",
+		FormatText:  aai.Bool(true),
+		Punctuate:   aai.Bool(true),
 	}
 
 	transcript, err := client.Transcripts.TranscribeFromReader(ctx, file, params)
